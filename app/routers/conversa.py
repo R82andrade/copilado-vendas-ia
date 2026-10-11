@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.database import SessionLocal
 from app.models.cliente import Cliente
 from app.models.conversa import Conversa
@@ -19,6 +20,7 @@ from app.schemas.conversa import (
 router = APIRouter(
     prefix="/conversas",
     tags=["Conversas"],
+    dependencies=[Depends(require_auth)],
 )
 
 

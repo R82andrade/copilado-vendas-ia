@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.database import SessionLocal
 from app.models.produto import Produto
 from app.schemas.produto import ProdutoCreate, ProdutoResponse
@@ -9,6 +10,7 @@ from app.schemas.produto import ProdutoCreate, ProdutoResponse
 router = APIRouter(
     prefix="/produtos",
     tags=["Produtos"],
+    dependencies=[Depends(require_auth)],
 )
 
 

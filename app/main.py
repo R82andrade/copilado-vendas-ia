@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.routers.auth import router as auth_router
 from app.routers.cliente import router as cliente_router
 from app.routers.conversa import router as conversa_router
 from app.routers.pedido import router as pedido_router
@@ -11,6 +12,7 @@ app = FastAPI(
     version="0.1.0"
 )
 
+app.include_router(auth_router)
 app.include_router(cliente_router)
 app.include_router(produto_router)
 app.include_router(pedido_router)

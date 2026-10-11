@@ -1,0 +1,8 @@
+name: vendas-api
+metadata:
+  template: vendas-api@0.0.1
+services:
+  api:
+    project: .
+    language: python
+    host: appservice

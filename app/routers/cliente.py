@@ -3,6 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.database import SessionLocal
 from app.models.cliente import Cliente
 from app.schemas.cliente import ClienteCreate, ClienteResponse
@@ -10,7 +11,8 @@ from app.schemas.cliente import ClienteCreate, ClienteResponse
 
 router = APIRouter(
     prefix="/clientes",
-    tags=["Clientes"]
+    tags=["Clientes"],
+    dependencies=[Depends(require_auth)],
 )
 
 

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vendas API - Painel de Atendimento</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>Vendas API</h1>
+          <span>Painel administrativo</span>
+        </div>
+
+        <section id="login-panel" class="panel login-panel">
+          <h2>Login</h2>
+          <form id="login-form">
+            <label>
+              Usuário
+              <input type="text" id="username" value="admin" required />
+            </label>
+            <label>
+              Senha
+              <input type="password" id="password" value="admin123" required />
+            </label>
+            <button type="submit">Entrar</button>
+          </form>
+        </section>
+
+        <section id="filters-panel" class="panel hidden">
+          <h2>Filtros</h2>
+          <label>
+            Status
+            <select id="status-filter">
+              <option value="">Todos</option>
+              <option value="aberta">Aberta</option>
+              <option value="pendente">Pendente</option>
+              <option value="em_atendimento">Em atendimento</option>
+              <option value="finalizada">Finalizada</option>
+            </select>
+          </label>
+          <label>
+            Canal
+            <select id="canal-filter">
+              <option value="">Todos</option>
+              <option value="chat">Chat</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="telefone">Telefone</option>
+            </select>
+          </label>
+          <button id="refresh-button" class="secondary">Atualizar</button>
+          <button id="logout-button" class="danger">Sair</button>
+        </section>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <span class="eyebrow">Atendimento</span>
+            <h2>Conversas em andamento</h2>
+          </div>
+        </header>
+
+        <div id="loading" class="empty-state">Carregando conversas...</div>
+
+        <div id="dashboard" class="dashboard hidden">
+          <section class="list-panel panel">
+            <h3>Lista de conversas</h3>
+            <div id="conversation-list" class="conversation-list"></div>
+          </section>
+
+          <section class="detail-panel panel">
+            <div id="conversation-detail" class="conversation-detail empty">
+              <p>Selecione uma conversa para ver o histórico.</p>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
