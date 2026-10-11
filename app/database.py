@@ -27,6 +27,8 @@ class Base(DeclarativeBase):
 
 
 from app.models.cliente import Cliente  # noqa: E402,F401
+from app.models.conversa import Conversa  # noqa: E402,F401
+from app.models.mensagem import Mensagem  # noqa: E402,F401
 from app.models.pedido import ItemPedido, Pedido  # noqa: E402,F401
 from app.models.produto import Produto  # noqa: E402,F401
 

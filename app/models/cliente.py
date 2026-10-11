@@ -17,3 +17,4 @@ class Cliente(Base):
     data_cadastro: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
 
     pedidos: Mapped[list["Pedido"]] = relationship(back_populates="cliente")
+    conversas: Mapped[list["Conversa"]] = relationship(back_populates="cliente")
