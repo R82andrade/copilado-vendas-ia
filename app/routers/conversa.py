@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -8,6 +10,7 @@ from app.models.mensagem import Mensagem
 from app.schemas.conversa import (
     ConversaCreate,
     ConversaResponse,
+    ConversaStatusUpdate,
     MensagemCreate,
     MensagemResponse,
 )
@@ -65,8 +68,20 @@ def criar_conversa(
 @router.get("/", response_model=list[ConversaResponse])
 def listar_conversas(
     db: Session = Depends(get_db),
+    status_filter: str | None = Query(default=None, alias="status"),
+    canal: str | None = None,
+    cliente_id: int | None = None,
 ):
-    return db.query(Conversa).order_by(Conversa.data_criacao.desc()).all()
+    query = db.query(Conversa)
+
+    if status_filter:
+        query = query.filter(Conversa.status == status_filter)
+    if canal:
+        query = query.filter(Conversa.canal == canal)
+    if cliente_id is not None:
+        query = query.filter(Conversa.cliente_id == cliente_id)
+
+    return query.order_by(Conversa.ultima_atualizacao.desc()).all()
 
 
 @router.get("/{conversa_id}", response_model=ConversaResponse)
@@ -80,6 +95,28 @@ def buscar_conversa(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversa não encontrada",
         )
+
+    return conversa
+
+
+@router.patch("/{conversa_id}/status", response_model=ConversaResponse)
+def atualizar_status_conversa(
+    conversa_id: int,
+    payload: ConversaStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    conversa = _buscar_conversa_por_id(db, conversa_id)
+    if not conversa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversa não encontrada",
+        )
+
+    conversa.status = payload.status
+    conversa.ultima_atualizacao = datetime.utcnow()
+
+    db.commit()
+    db.refresh(conversa)
 
     return conversa
 
@@ -107,6 +144,7 @@ def criar_mensagem(
         texto=mensagem.texto,
     )
 
+    conversa.ultima_atualizacao = datetime.utcnow()
     db.add(nova_mensagem)
     db.commit()
     db.refresh(nova_mensagem)

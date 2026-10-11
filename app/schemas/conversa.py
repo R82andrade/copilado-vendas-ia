@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MensagemCreate(BaseModel):
@@ -23,10 +23,14 @@ class ConversaCreate(BaseModel):
     canal: str = "chat"
 
 
+class ConversaStatusUpdate(BaseModel):
+    status: str
+
+
 class ConversaResponse(ConversaCreate):
     id: int
     data_criacao: datetime
     ultima_atualizacao: datetime
-    mensagens: list[MensagemResponse] = []
+    mensagens: list[MensagemResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

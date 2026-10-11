@@ -87,3 +87,35 @@ def test_listar_conversas_do_cliente():
     response = client.get("/conversas/")
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+def test_atualizar_status_e_filtrar_conversas():
+    reset_db()
+
+    with TestingSessionLocal() as db:
+        db.add(Cliente(id=1, nome="Lucas Rocha", telefone="21993334455", cpf="10111213141"))
+        db.commit()
+
+    client.post(
+        "/conversas/",
+        json={"cliente_id": 1, "assunto": "Pedido atrasado", "status": "aberta", "canal": "whatsapp"},
+    )
+    client.post(
+        "/conversas/",
+        json={"cliente_id": 1, "assunto": "Consulta de estoque", "status": "pendente", "canal": "chat"},
+    )
+
+    update_response = client.patch(
+        "/conversas/1/status",
+        json={"status": "em_atendimento"},
+    )
+    assert update_response.status_code == 200, update_response.text
+    assert update_response.json()["status"] == "em_atendimento"
+
+    filtro_status = client.get("/conversas/?status=em_atendimento")
+    assert filtro_status.status_code == 200
+    assert len(filtro_status.json()) == 1
+
+    filtro_cliente = client.get("/conversas/?cliente_id=1")
+    assert filtro_cliente.status_code == 200
+    assert len(filtro_cliente.json()) == 2
