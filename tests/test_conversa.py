@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -6,6 +8,10 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import app
 from app.models.cliente import Cliente
+from app.models.conversa import Conversa
+from app.models.conversa_canal import ConversaResponsavel, MensagemCanal
+from app.models.mensagem import Mensagem
+from app.models.usuario import Usuario
 from app.routers.conversa import get_db
 
 
@@ -119,3 +125,112 @@ def test_atualizar_status_e_filtrar_conversas():
     filtro_cliente = client.get("/conversas/?cliente_id=1")
     assert filtro_cliente.status_code == 200
     assert len(filtro_cliente.json()) == 2
+
+
+def test_conversas_paginadas_resumem_mensagens_e_filtram_sla():
+    reset_db()
+    with TestingSessionLocal() as db:
+        customer = Cliente(id=1, nome="Marina Dias", telefone="+5521991112233")
+        db.add(customer)
+        db.flush()
+        open_conversation = Conversa(cliente_id=customer.id, assunto="Retorno pendente", canal="whatsapp")
+        closed_conversation = Conversa(cliente_id=customer.id, assunto="Atendimento encerrado", status="finalizada")
+        db.add_all([open_conversation, closed_conversation])
+        db.flush()
+        old_time = datetime.utcnow() - timedelta(minutes=20)
+        db.add_all([
+            Mensagem(conversa_id=open_conversation.id, remetente="cliente", texto="Preciso de ajuda", data_envio=old_time),
+            Mensagem(conversa_id=closed_conversation.id, remetente="cliente", texto="Já resolvido", data_envio=old_time),
+        ])
+        db.commit()
+
+    response = client.get("/conversas/pagina?atrasadas=true")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["sla_minutes"] == 15
+    assert payload["items"][0]["assunto"] == "Retorno pendente"
+    assert payload["items"][0]["ultima_mensagem"] == "Preciso de ajuda"
+    assert payload["items"][0]["sla_atrasada"] is True
+
+
+def test_status_de_conversa_valida_transicoes():
+    reset_db()
+    with TestingSessionLocal() as db:
+        db.add(Cliente(id=1, nome="Carlos Silva"))
+        db.commit()
+    conversation_id = client.post("/conversas/", json={"cliente_id": 1}).json()["id"]
+
+    finalized = client.patch(f"/conversas/{conversation_id}/status", json={"status": "finalizada"})
+    assert finalized.status_code == 200
+    invalid = client.patch(f"/conversas/{conversation_id}/status", json={"status": "pendente"})
+    assert invalid.status_code == 409
+    reopened = client.patch(f"/conversas/{conversation_id}/status", json={"status": "aberta"})
+    assert reopened.status_code == 200
+
+
+def test_atribuir_responsavel_e_rejeitar_usuario_inativo():
+    reset_db()
+    with TestingSessionLocal() as db:
+        db.add_all([
+            Cliente(id=1, nome="Ana Souza"),
+            Usuario(username="agente", password_hash="hash", role="atendimento", ativo=True),
+            Usuario(username="inativo", password_hash="hash", role="atendimento", ativo=False),
+        ])
+        db.commit()
+    conversation_id = client.post("/conversas/", json={"cliente_id": 1}).json()["id"]
+
+    assigned = client.patch(f"/conversas/{conversation_id}/responsavel", json={"username": "agente"})
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["responsavel"] == "agente"
+    rejected = client.patch(f"/conversas/{conversation_id}/responsavel", json={"username": "inativo"})
+    assert rejected.status_code == 422
+    removed = client.patch(f"/conversas/{conversation_id}/responsavel", json={"username": None})
+    assert removed.status_code == 200
+    with TestingSessionLocal() as db:
+        assert db.query(ConversaResponsavel).filter_by(conversa_id=conversation_id).count() == 0
+
+
+def test_historico_de_mensagens_tem_paginacao_por_cursor():
+    reset_db()
+    with TestingSessionLocal() as db:
+        db.add(Cliente(id=1, nome="João Lima"))
+        db.commit()
+    conversation_id = client.post("/conversas/", json={"cliente_id": 1}).json()["id"]
+    for index in range(5):
+        response = client.post(
+            f"/conversas/{conversation_id}/mensagens/",
+            json={"remetente": "cliente", "texto": f"Mensagem {index}"},
+        )
+        assert response.status_code == 201
+
+    latest = client.get(f"/conversas/{conversation_id}/mensagens/pagina?limit=2")
+    assert latest.status_code == 200, latest.text
+    assert [item["texto"] for item in latest.json()["items"]] == ["Mensagem 3", "Mensagem 4"]
+    assert latest.json()["has_more"] is True
+    earlier = client.get(
+        f"/conversas/{conversation_id}/mensagens/pagina?limit=2&before_id={latest.json()['next_before_id']}"
+    )
+    assert [item["texto"] for item in earlier.json()["items"]] == ["Mensagem 1", "Mensagem 2"]
+
+
+def test_mensagem_whatsapp_registrada_com_id_do_provedor(monkeypatch):
+    reset_db()
+    with TestingSessionLocal() as db:
+        db.add(Cliente(id=1, nome="Lia Ramos", telefone="+5521999990000"))
+        db.commit()
+    conversation_id = client.post(
+        "/conversas/",
+        json={"cliente_id": 1, "canal": "whatsapp"},
+    ).json()["id"]
+    monkeypatch.setattr("app.routers.conversa.send_whatsapp_text", lambda phone, text: "wamid.outbound")
+
+    response = client.post(
+        f"/conversas/{conversation_id}/mensagens/",
+        json={"remetente": "atendente", "texto": "Olá!"},
+    )
+    assert response.status_code == 201, response.text
+    with TestingSessionLocal() as db:
+        provider_message = db.query(MensagemCanal).one()
+        assert provider_message.provider_message_id == "wamid.outbound"
+        assert provider_message.direction == "outbound"

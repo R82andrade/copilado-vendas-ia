@@ -6,3 +6,19 @@ services:
     project: .
     language: python
     host: appservice
+    hooks:
+      prepackage:
+        windows:
+          shell: pwsh
+          run: |
+            npm --prefix frontend ci
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            npm --prefix frontend run build
+            exit $LASTEXITCODE
+          interactive: false
+        posix:
+          shell: sh
+          run: |
+            npm --prefix frontend ci
+            npm --prefix frontend run build
+          interactive: false

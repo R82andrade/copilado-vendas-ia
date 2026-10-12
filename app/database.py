@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
@@ -28,8 +28,19 @@ class Base(DeclarativeBase):
 
 from app.models.cliente import Cliente  # noqa: E402,F401
 from app.models.conversa import Conversa  # noqa: E402,F401
+from app.models.conversa_canal import ConversaResponsavel, MensagemCanal  # noqa: E402,F401
 from app.models.mensagem import Mensagem  # noqa: E402,F401
+from app.models.ia import AnaliseIA, DecisaoIA, SugestaoIA  # noqa: E402,F401
 from app.models.pedido import ItemPedido, Pedido  # noqa: E402,F401
 from app.models.produto import Produto  # noqa: E402,F401
+from app.models.usuario import Usuario  # noqa: E402,F401
 
 Base.metadata.create_all(bind=engine)
+
+# Add newly introduced conversation fields to existing local and deployed databases.
+if "resultado" not in {column["name"] for column in inspect(engine).get_columns("conversas")}:
+    with engine.begin() as connection:
+        connection.execute(text(
+            "ALTER TABLE conversas ADD COLUMN resultado VARCHAR(40) "
+            "NOT NULL DEFAULT 'sem_resultado'"
+        ))

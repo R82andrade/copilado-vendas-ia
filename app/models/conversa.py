@@ -13,6 +13,7 @@ class Conversa(Base):
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), nullable=False)
     assunto: Mapped[str] = mapped_column(String(200), nullable=False, default="Atendimento")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="aberta")
+    resultado: Mapped[str] = mapped_column(String(40), nullable=False, default="sem_resultado")
     canal: Mapped[str] = mapped_column(String(50), nullable=False, default="chat")
     data_criacao: Mapped[datetime] = mapped_column(
         DateTime,
