@@ -1,5 +1,26 @@
 Copiloto de Vendas com IA
 API de vendas e atendimento desenvolvida com FastAPI, SQLAlchemy e PostgreSQL/SQLite. O painel administrativo utiliza React, Vite e React Router para consumir os endpoints da API.
+
+## Capturas da interface
+
+Visão das principais telas do espaço de trabalho:
+
+| Dashboard | Clientes |
+| --- | --- |
+| [<img src="./screenshots/dashboard-interface.png" alt="Dashboard" width="440">](./screenshots/dashboard-interface.png) | [<img src="./screenshots/clientes-interface.png" alt="Clientes" width="440">](./screenshots/clientes-interface.png) |
+
+| Conversas | Análises da IA |
+| --- | --- |
+| [<img src="./screenshots/conversas-interface.png" alt="Conversas" width="440">](./screenshots/conversas-interface.png) | [<img src="./screenshots/analises-ia-interface.png" alt="Análises da IA" width="440">](./screenshots/analises-ia-interface.png) |
+
+| Sugestões | Produtos |
+| --- | --- |
+| [<img src="./screenshots/sugestoes-interface.png" alt="Sugestões" width="440">](./screenshots/sugestoes-interface.png) | [<img src="./screenshots/produtos-interface.png" alt="Produtos" width="440">](./screenshots/produtos-interface.png) |
+
+| Histórico |
+| --- |
+| [<img src="./screenshots/historico-interface.png" alt="Histórico" width="440">](./screenshots/historico-interface.png) |
+
 Desenvolvimento em colaboração com IA
 Este projeto é uma iniciativa de portfólio conduzida por mim, com apoio de ferramentas de Inteligência Artificial durante o processo de desenvolvimento. Utilizo a IA como parceira para explorar alternativas, discutir soluções técnicas, auxiliar na implementação, investigar erros e aprimorar testes e documentação.
 A colaboração não elimina a necessidade de avaliação humana. As sugestões precisam ser revisadas, executadas e testadas antes de serem consideradas parte do projeto. Meu objetivo é compreender progressivamente a arquitetura e as decisões técnicas, validar o comportamento da aplicação e assumir responsabilidade pelo resultado.
