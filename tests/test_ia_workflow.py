@@ -68,6 +68,7 @@ def test_analysis_suggestions_and_seller_decisions_are_persisted(workflow_client
 
     class OpenAIResponse:
         is_error = False
+        status_code = 200
 
         @staticmethod
         def json():
@@ -143,6 +144,7 @@ def test_message_cannot_mark_an_unaccepted_suggestion_as_sent(workflow_client, m
 
     class OpenAIResponse:
         is_error = False
+        status_code = 200
 
         @staticmethod
         def json():

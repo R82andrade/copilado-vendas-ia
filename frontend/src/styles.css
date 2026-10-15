@@ -78,6 +78,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 h1, h2, h3, p { margin-top: 0; }
 .page-heading h1, .profile-header h1 { margin: 0; color: #172638; font: 700 clamp(24px, 2.6vw, 30px) 'Manrope', sans-serif; letter-spacing: -.8px; }
 .page-heading p, .profile-header p { margin: 7px 0 0; color: #8490a0; font-size: 13px; }
+.catalog-heading-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 9px; }
+.financial-modal { width: min(680px, 100%); max-height: min(90vh, 900px); overflow-y: auto; }
+.financial-edit-form { padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe; }
+.financial-edit-form h3 { margin: 0; color: #344256; font-size: 13px; }
+.financial-edit-form small, .client-form > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.finance-simulation-form { margin-top: 18px; }
+.finance-result { margin-top: 16px; padding: 15px; border: 1px solid #cce9de; border-radius: 10px; background: #f2fbf7; color: #176447; }
+.finance-result.finance-bloqueada { border-color: #f1d2ca; background: #fff7f5; color: #9b3f2d; }
+.finance-result > strong { display: block; margin-bottom: 6px; }
+.finance-result p { margin: 4px 0 10px; font-size: 12px; }
+.finance-result dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0 0; }
+.finance-result dl div { display: grid; gap: 3px; padding: 9px; border-radius: 7px; background: rgba(255,255,255,.8); }
+.finance-result dt { color: #738194; font-size: 10px; }
+.finance-result dd { margin: 0; color: #27394d; font-size: 12px; font-weight: 700; }
+.finance-ai-button { margin-top: 14px; }
+.finance-recommendation { margin-top: 12px; }
+.finance-recommendation p { margin: 6px 0 0; }
 .button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 600; transition: transform .15s, box-shadow .15s, background .15s; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
 .button:disabled { cursor: wait; opacity: .65; }

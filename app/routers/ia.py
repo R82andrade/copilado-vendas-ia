@@ -1,5 +1,6 @@
 import json
 import os
+from decimal import Decimal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,9 @@ from app.models.ia import AnaliseIA, DecisaoIA, SugestaoIA
 from app.models.mensagem import Mensagem
 from app.models.pedido import ItemPedido, Pedido
 from app.models.produto import Produto
+from app.routers.financeiro import financial_user, get_config
+from app.services.financeiro import InvalidFinancialInputError
+from app.services.financeiro_produto import calculate_product_finance
 
 
 router = APIRouter(
@@ -52,6 +56,10 @@ ANALYSIS_SCHEMA = {
 
 class DecisaoRequest(BaseModel):
     decisao: str = Field(pattern="^(aceita|rejeitada)$")
+
+
+class FinancialAdviceRequest(BaseModel):
+    desconto_percentual: Decimal = Field(default=Decimal("0"), ge=0, le=100)
 
 
 def _analise_payload(analise: AnaliseIA) -> dict:
@@ -100,6 +108,88 @@ def status_ia():
     return {
         "configurada": bool(os.getenv("OPENAI_API_KEY", "").strip()),
         "modelo": os.getenv("OPENAI_MODEL", "gpt-6-astra"),
+    }
+
+
+@router.post("/produtos/{produto_id}/recomendacao-financeira")
+def recomendar_negociacao_financeira(
+    produto_id: int,
+    payload: FinancialAdviceRequest,
+    usuario: dict = Depends(financial_user),
+    db: Session = Depends(get_db),
+):
+    """Pede uma explicação da IA sobre resultados determinísticos do backend."""
+    product = db.query(Produto).filter(Produto.id == produto_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
+    try:
+        facts = calculate_product_finance(
+            product, get_config(db), discount_percent=payload.desconto_percentual
+        )
+    except InvalidFinancialInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if facts["situacao"] == "dados_insuficientes":
+        return {
+            "situacao": "dados_insuficientes",
+            "fatos_calculados": facts,
+            "recomendacao": "Não há dados financeiros suficientes para recomendar um desconto. Confira os campos ausentes com o responsável comercial.",
+            "revisao_humana_necessaria": True,
+        }
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Integração de IA não configurada.")
+    prompt = (
+        "Explique em português, de forma breve, os resultados financeiros já calculados. "
+        "Use somente os fatos fornecidos. Não recalcule nem invente valores, custos, estoque ou concorrentes. "
+        "Se a situação estiver bloqueada, explique o motivo e sugira confirmar custos ou solicitar aprovação humana. "
+        "Não altere preços nem autorize operações."
+    )
+    try:
+        response = httpx.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": os.getenv("OPENAI_MODEL", "gpt-6-astra"),
+                "store": False,
+                "max_output_tokens": 300,
+                "input": [
+                    {"role": "system", "content": [{"type": "input_text", "text": prompt}]},
+                    {"role": "user", "content": [{"type": "input_text", "text": json.dumps({
+                        key: facts.get(key) for key in (
+                            "situacao", "preco_final", "desconto_percentual", "margem_bruta_percentual",
+                            "margem_contribuicao_percentual", "preco_minimo",
+                            "limite_financeiro_desconto_percentual", "limite_comercial_desconto_percentual",
+                            "limite_permitido_desconto_percentual", "motivo", "dados_ausentes",
+                        )
+                    }, default=str)}]},
+                ],
+            },
+            timeout=30,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Não foi possível conectar ao serviço de IA.") from exc
+    if response.status_code in {401, 403, 404, 429}:
+        raise HTTPException(status_code=503, detail="A integração de IA não está disponível para esta configuração.")
+    if response.is_error:
+        raise HTTPException(status_code=502, detail="A IA não conseguiu preparar a explicação.")
+    try:
+        result = response.json()
+        if result.get("status") != "completed":
+            raise ValueError("incomplete")
+        explanation = next(
+            block["text"]
+            for item in result.get("output", [])
+            for block in item.get("content", [])
+            if block.get("type") == "output_text"
+        )
+    except (ValueError, KeyError, TypeError, StopIteration):
+        raise HTTPException(status_code=502, detail="A IA não retornou uma explicação completa.")
+    return {
+        "situacao": facts["situacao"],
+        "fatos_calculados": facts,
+        "recomendacao": explanation,
+        "revisao_humana_necessaria": True,
+        "solicitado_por": usuario["username"],
     }
 
 

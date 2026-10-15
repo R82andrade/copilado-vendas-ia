@@ -63,7 +63,7 @@ export default function App() {
             <Route path="conversas" element={<ConversationsPage />} />
             <Route path="analises-ia" element={<AIAnalysesPage />} />
             <Route path="sugestoes" element={<SuggestionsPage />} />
-            <Route path="produtos" element={<ProductsPage />} />
+            <Route path="produtos" element={<ProductsPage account={account} />} />
             <Route path="historico" element={<OrdersPage />} />
             <Route path="configuracoes" element={<UsersPage account={account} />} />
             <Route path="*" element={<Navigate to="/" replace />} />

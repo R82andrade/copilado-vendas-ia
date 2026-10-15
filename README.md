@@ -5,7 +5,7 @@ API de vendas e atendimento construída com FastAPI, SQLAlchemy e PostgreSQL/SQL
 ## O que já funciona
 
 - Cadastro, edição, consulta e exclusão de clientes.
-- Catálogo com cadastro de produtos, preços, estoque e limite de desconto.
+- Catálogo com cadastro de produtos, preços, estoque e limite de desconto. O painel calcula e exibe o preço final aplicando o desconto máximo permitido.
 - Consulta de pedidos e totais registrados.
 - Fila de conversas, histórico de mensagens, atualização de status e envio de respostas.
 - Dashboard calculado a partir dos registros reais disponíveis na API.
@@ -46,6 +46,7 @@ Instale as dependências Python e prepare o arquivo de ambiente:
 ```powershell
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
+python -m alembic upgrade head
 # Edite .env e configure OPENAI_API_KEY com sua chave da API da OpenAI.
 ```
 
@@ -122,6 +123,109 @@ azd up
 ```
 
 O hook de empacotamento instala as dependências do frontend e executa o build do Vite antes do deploy. Detalhes e parâmetros secretos estão em [docs/deploy-azure.md](docs/deploy-azure.md).
-# Comparação de preços no Mercado Livre
 
-No catálogo, use o ícone de balança ao lado do produto para ver o preço cadastrado e abrir uma busca por anúncios semelhantes no Mercado Livre. A busca abre em outra aba e não exige token nem configuração adicional. Confira se os anúncios têm as mesmas especificações, condição e custos de entrega antes de comparar.
+## Pesquisa de preços em outras lojas
+
+No **Catálogo de produtos**, o preço com desconto máximo é calculado assim:
+
+```text
+preço final = preço cadastrado × (1 − desconto máximo / 100)
+```
+
+Use o ícone de balança em um produto para abrir a comparação. A janela mostra o preço cadastrado, permite atualizá-lo e apresenta o preço com o desconto máximo. O termo de busca começa com a marca e o nome do produto, mas pode ser editado.
+
+Os botões abrem buscas públicas em outra aba no Google Shopping, Amazon Brasil, Magalu, Shopee e Mercado Livre. Essa busca não exige token, senha nem configuração adicional no projeto. Os resultados e preços são exibidos pelos próprios sites; o sistema não coleta nem atualiza ofertas automaticamente. Para comparar, confira modelo, especificações, condição e frete. Uma loja pode solicitar login para concluir uma compra.
+
+## Módulo financeiro
+
+O catálogo calcula rentabilidade estimada e valida descontos antes de registrar um pedido. Custos unitários ficam opcionais em `produtos`: `custo_aquisicao`, `outros_custos_variaveis`, `margem_contribuicao_minima` e `limite_desconto_comercial`. Valores monetários usam `NUMERIC(12,2)`/`Decimal`; percentuais usam `NUMERIC(5,2)`. Valores vazios significam desconhecidos, não zero.
+
+A política global fica em `configuracoes_financeiras`, com imposto variável, comissão, margem mínima e limite comercial. Uma definição individual de margem ou desconto no produto prevalece sobre a global. Informe custo zero somente quando o responsável confirmar que não há esse custo.
+
+O campo de desconto máximo já existente no catálogo continua sendo um teto adicional. O limite usado é o menor entre esse teto legado e o limite financeiro/comercial configurado, para que a nova funcionalidade não aumente permissões de desconto existentes.
+
+Fórmulas usadas (percentuais em escala 0 a 100):
+
+```text
+lucro bruto = preço final - custo de aquisição
+margem bruta (%) = lucro bruto / preço final * 100
+contribuição = preço final - aquisição - outros custos - preço final * (imposto + comissão) / 100
+margem de contribuição (%) = contribuição / preço final * 100
+preço mínimo = (aquisição + outros custos) / (1 - (imposto + comissão + margem mínima) / 100)
+desconto financeiro máximo (%) = max(0, (preço atual - preço mínimo) / preço atual * 100)
+desconto permitido = menor entre desconto financeiro máximo e limite comercial
+```
+
+Margem é calculada sobre o preço de venda; markup é calculado sobre o custo. Custos fixos e despesas rateadas não entram nessas estimativas, portanto o resultado não é lucro líquido. Os percentuais tributários e comerciais devem ser confirmados pelo responsável da loja ou contador.
+
+### Endpoints financeiros
+
+- `GET /financeiro/produtos/{id}`: consulta parâmetros e cálculos do produto.
+- `PUT /financeiro/produtos/{id}`: atualiza custos e limites específicos (somente administrador).
+- `GET /financeiro/configuracao`: consulta a política global (somente administrador).
+- `PUT /financeiro/configuracao`: cria ou atualiza a política global (somente administrador).
+- `POST /financeiro/produtos/{id}/simulacoes`: simula `desconto_percentual` ou `preco_final_pretendido` (administrador ou vendas).
+- `POST /ia/produtos/{id}/recomendacao-financeira`: pede explicação revisável dos resultados calculados (administrador ou vendas).
+
+Exemplo de configuração e simulação:
+
+```text
+PUT /financeiro/configuracao
+Content-Type: application/json
+{"imposto_variavel_percentual":8,"comissao_percentual":5,"margem_contribuicao_minima":20,"limite_desconto_comercial":15}
+
+PUT /financeiro/produtos/1
+Content-Type: application/json
+{"custo_aquisicao":100,"outros_custos_variaveis":10}
+
+POST /financeiro/produtos/1/simulacoes
+Content-Type: application/json
+{"desconto_percentual":10}
+```
+
+Resposta resumida para esse exemplo (supondo limite legado do catálogo de pelo menos 15%):
+
+```json
+{
+  "situacao": "permitida",
+  "preco_original": 200,
+  "desconto_percentual": 10,
+  "valor_desconto": 20,
+  "preco_final": 180,
+  "custo_aquisicao": 100,
+  "outros_custos_variaveis": 10,
+  "imposto_variavel_valor": 14.4,
+  "comissao_valor": 9,
+  "lucro_bruto": 80,
+  "margem_bruta_percentual": 44.44,
+  "contribuicao_unitaria": 46.6,
+  "margem_contribuicao_percentual": 25.89,
+  "preco_minimo": 164.18,
+  "limite_financeiro_desconto_percentual": 17.91,
+  "limite_comercial_desconto_percentual": 15,
+  "limite_permitido_desconto_percentual": 15,
+  "motivo": null
+}
+```
+
+Os cálculos e bloqueios são feitos no backend. `admin` pode consultar e alterar dados financeiros; `vendas` pode consultar e simular; `atendimento` e `leitor` não têm acesso financeiro. Os schemas públicos de produto não incluem custos ou margens. O endpoint de pedidos recusa descontos positivos quando faltam dados financeiros e bloqueia propostas fora da política.
+
+### Migrações e testes
+
+Alembic está configurado com migração aditiva e campos opcionais. Para aplicar em banco existente, faça o backup operacional habitual e execute na raiz do projeto:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m alembic upgrade head
+```
+
+A revisão base cria o schema legado em um banco novo e deixa tabelas existentes intactas. A revisão financeira acrescenta colunas `NULL` e cria a tabela da política. O downgrade não apaga os dados; reversões devem ser planejadas como procedimento manual revisado. PostgreSQL e SQLite usam tipos `NUMERIC`.
+
+```powershell
+python -m pytest tests/test_financeiro.py tests/test_financeiro_api.py tests/test_financeiro_migration.py tests/test_compra.py -q
+python -m pytest -q
+```
+
+A comparação automática de ofertas concorrentes continua planejada porque ainda não há fonte estruturada de preços reais. A IA explica dados calculados, não autoriza descontos e não altera valores automaticamente.
+
+Descontos fora da política são bloqueados. Esta entrega ainda não possui fila interna de solicitação e aprovação excepcional; se a loja autorizar uma exceção, um administrador precisa revisar e ajustar a política antes do registro do pedido. A compatibilidade da migração foi exercitada em SQLite; a migração PostgreSQL usa operações aditivas e tipos `NUMERIC`, mas ainda deve ser validada no ambiente PostgreSQL de implantação.

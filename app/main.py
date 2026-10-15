@@ -17,6 +17,7 @@ from app.routers.demo import router as demo_router
 from app.routers.ia import router as ia_router
 from app.routers.pedido import router as pedido_router
 from app.routers.produto import router as produto_router
+from app.routers.financeiro import router as financeiro_router
 from app.routers.whatsapp import router as whatsapp_router
 
 app = FastAPI(
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(cliente_router)
 app.include_router(produto_router)
+app.include_router(financeiro_router)
 app.include_router(pedido_router)
 app.include_router(conversa_router)
 app.include_router(demo_router)

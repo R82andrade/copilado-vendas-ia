@@ -87,6 +87,8 @@ def _allowed(role: str, method: str, path: str) -> bool:
         return method == "GET"
     if path == "/webhooks/whatsapp/status":
         return method == "GET"
+    if path.startswith("/financeiro"):
+        return method in {"GET", "POST"} if role == "vendas" else False
     if role == "leitor":
         return method == "GET"
     if path.startswith("/conversas"):

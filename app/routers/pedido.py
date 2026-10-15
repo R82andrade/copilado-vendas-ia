@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,9 +7,12 @@ from sqlalchemy.orm import Session
 from app.auth import require_auth
 from app.database import SessionLocal
 from app.models.cliente import Cliente
+from app.models.configuracao_financeira import ConfiguracaoFinanceira
 from app.models.pedido import ItemPedido, Pedido
 from app.models.produto import Produto
 from app.schemas.pedido import PedidoCreate, PedidoResponse
+from app.services.financeiro import InvalidFinancialInputError
+from app.services.financeiro_produto import calculate_product_finance
 
 
 router = APIRouter(
@@ -69,6 +73,26 @@ def criar_pedido(
                     f"para {produto.nome} ({produto.desconto_maximo}%)"
                 ),
             )
+
+        if item.desconto > 0:
+            config = db.query(ConfiguracaoFinanceira).filter(ConfiguracaoFinanceira.id == 1).first()
+            try:
+                financial = calculate_product_finance(
+                    produto, config, discount_percent=Decimal(str(item.desconto))
+                )
+            except InvalidFinancialInputError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if financial["situacao"] == "dados_insuficientes":
+                raise HTTPException(
+                    status_code=422,
+                    detail="Desconto não pode ser validado; dados financeiros ausentes: "
+                    + ", ".join(financial["dados_ausentes"]),
+                )
+            if financial["situacao"] == "bloqueada":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Desconto bloqueado para {produto.nome}: {financial['motivo']}",
+                )
 
         subtotal = round(
             item.quantidade * produto.preco * (1 - (item.desconto / 100)),

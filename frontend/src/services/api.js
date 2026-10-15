@@ -65,6 +65,13 @@ export const api = {
       method: 'POST', body: JSON.stringify({ decisao: decision }),
     }),
   },
+  financeiro: {
+    product: (id) => request(`/financeiro/produtos/${id}`),
+    updateProduct: (id, data) => request(`/financeiro/produtos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    simulate: (id, data) => request(`/financeiro/produtos/${id}/simulacoes`, { method: 'POST', body: JSON.stringify(data) }),
+    config: () => request('/financeiro/configuracao'),
+    updateConfig: (data) => request('/financeiro/configuracao', { method: 'PUT', body: JSON.stringify(data) }),
+  },
   produtos: {
     list: () => request('/produtos/'),
     create: (data) => request('/produtos/', { method: 'POST', body: JSON.stringify(data) }),
@@ -72,6 +79,11 @@ export const api = {
     remove: (id) => request(`/produtos/${id}`, { method: 'DELETE' }),
   },
   pedidos: { list: () => request('/pedidos/') },
+  iaFinanceiro: {
+    recommend: (id, discount) => request(`/ia/produtos/${id}/recomendacao-financeira`, {
+      method: 'POST', body: JSON.stringify({ desconto_percentual: Number(discount) }),
+    }),
+  },
   usuarios: {
     list: () => request('/auth/users'),
     agents: () => request('/auth/agents'),

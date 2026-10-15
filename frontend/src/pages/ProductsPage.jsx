@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CirclePlus, Package, Pencil, Search, Scale, Trash2 } from 'lucide-react';
+import { CirclePlus, Package, Pencil, Search, Scale, Trash2, Calculator, Settings2 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useApiData } from '../hooks/useApiData.js';
 
@@ -48,7 +48,119 @@ function ProductForm({ product, onClose, onSave, busy }) {
   </section></div>;
 }
 
-export function ProductsPage() {
+function financialValue(value) {
+  return value == null ? '' : String(value).replace('.', ',');
+}
+
+function FinanceModal({ product, account, onClose }) {
+  const [data, setData] = useState(null);
+  const [discount, setDiscount] = useState('0');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const [recommendation, setRecommendation] = useState('');
+  const isAdmin = account.role === 'admin';
+  const fields = data?.dados_financeiros || {};
+
+  React.useEffect(() => {
+    api.financeiro.product(product.id).then(setData).catch((reason) => setError(reason.message)).finally(() => setLoading(false));
+  }, [product.id]);
+
+  async function saveFinancial(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const money = (name) => form.get(name).trim() ? parseCatalogPrice(form.get(name)) : null;
+    const percent = (name) => form.get(name).trim() ? Number(String(form.get(name)).replace(',', '.')) : null;
+    setBusy(true); setError('');
+    try {
+      await api.financeiro.updateProduct(product.id, {
+        custo_aquisicao: money('custo_aquisicao'),
+        outros_custos_variaveis: money('outros_custos_variaveis'),
+        margem_contribuicao_minima: percent('margem_contribuicao_minima'),
+        limite_desconto_comercial: percent('limite_desconto_comercial'),
+      });
+      setData(await api.financeiro.product(product.id));
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  }
+
+  async function runSimulation(event) {
+    event.preventDefault(); setBusy(true); setError(''); setRecommendation('');
+    try { setResult(await api.financeiro.simulate(product.id, { desconto_percentual: Number(discount.replace(',', '.')) })); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  }
+
+  async function askCopilot() {
+    setBusy(true); setError(''); setRecommendation('');
+    try {
+      const answer = await api.iaFinanceiro.recommend(product.id, discount);
+      setRecommendation(answer.recomendacao);
+      if (answer.fatos_calculados) setResult(answer.fatos_calculados);
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  }
+
+  const amount = (value) => value == null ? '—' : currency.format(Number(value));
+  const percentLabel = (value) => value == null ? '—' : `${value}%`;
+
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section className="modal-card financial-modal" role="dialog" aria-modal="true" aria-labelledby="finance-title">
+      <div className="modal-heading"><div><span className="eyebrow">ANÁLISE COMERCIAL</span><h2 id="finance-title">{product.nome}</h2></div><button className="icon-button close-button" type="button" onClick={onClose} aria-label="Fechar">×</button></div>
+      {loading ? <div className="page-loading"><span className="spinner" />Carregando dados financeiros…</div> : <>
+        {error && <div className="inline-error" role="alert">{error}</div>}
+        {isAdmin && <form className="client-form financial-edit-form" onSubmit={saveFinancial}>
+          <h3>Custos e limites do produto</h3>
+          <div className="form-two-col"><label>Custo de aquisição (R$)<input name="custo_aquisicao" inputMode="decimal" defaultValue={financialValue(fields.custo_aquisicao)} placeholder="Obrigatório para calcular" /></label><label>Outros custos variáveis (R$)<input name="outros_custos_variaveis" inputMode="decimal" defaultValue={financialValue(fields.outros_custos_variaveis)} placeholder="Informe 0 se não houver" /></label></div>
+          <div className="form-two-col"><label>Margem mínima (%)<input name="margem_contribuicao_minima" type="number" min="0" max="99.99" step="0.01" defaultValue={financialValue(fields.margem_contribuicao_minima)} placeholder="Usa padrão da loja" /></label><label>Limite comercial (%)<input name="limite_desconto_comercial" type="number" min="0" max="100" step="0.01" defaultValue={financialValue(fields.limite_desconto_comercial)} placeholder="Usa padrão da loja" /></label></div>
+          <small>Deixe em branco para herdar o padrão da loja. Para custos, informe 0 somente quando confirmado.</small>
+          <button className="button button-secondary" disabled={busy}>{busy ? 'Salvando…' : 'Salvar dados financeiros'}</button>
+        </form>}
+        <form className="comparison-search finance-simulation-form" onSubmit={runSimulation}>
+          <label htmlFor="finance-discount">Simular desconto (%)</label><div className="comparison-own-price-edit"><input id="finance-discount" type="number" min="0" max="100" step="0.01" value={discount} onChange={(event) => setDiscount(event.target.value)} /><button className="button button-primary" disabled={busy}>{busy ? 'Calculando…' : 'Simular'}</button></div>
+        </form>
+        {data?.situacao === 'dados_insuficientes' && <div className="inline-warning" role="status">Faltam dados para calcular: {data.dados_ausentes.join(', ')}. O responsável comercial deve informar os valores ausentes.</div>}
+        {result && <section className={`finance-result finance-${result.situacao}`} aria-live="polite">
+          <strong>{result.situacao === 'permitida' ? 'Desconto permitido' : result.situacao === 'bloqueada' ? 'Desconto bloqueado' : 'Dados insuficientes'}</strong>
+          {result.motivo && <p>{result.motivo}</p>}
+          {result.dados_ausentes?.length > 0 && <p>Dados ausentes: {result.dados_ausentes.join(', ')}</p>}
+          <dl><div><dt>Preço original</dt><dd>{amount(result.preco_original)}</dd></div><div><dt>Desconto</dt><dd>{percentLabel(result.desconto_percentual)} · {amount(result.valor_desconto)}</dd></div><div><dt>Preço final</dt><dd>{amount(result.preco_final)}</dd></div><div><dt>Custo de aquisição</dt><dd>{amount(result.custo_aquisicao)}</dd></div><div><dt>Outros custos variáveis</dt><dd>{amount(result.outros_custos_variaveis)}</dd></div><div><dt>Impostos e comissões</dt><dd>{amount(result.imposto_variavel_valor)} + {amount(result.comissao_valor)}</dd></div><div><dt>Lucro bruto</dt><dd>{amount(result.lucro_bruto)} · {percentLabel(result.margem_bruta_percentual)}</dd></div><div><dt>Contribuição estimada</dt><dd>{amount(result.contribuicao_unitaria)} · {percentLabel(result.margem_contribuicao_percentual)}</dd></div><div><dt>Preço mínimo</dt><dd>{amount(result.preco_minimo)}</dd></div><div><dt>Limite permitido</dt><dd>{percentLabel(result.limite_permitido_desconto_percentual)}</dd></div></dl>
+        </section>}
+        {account.role === 'admin' || account.role === 'vendas' ? <button className="button button-secondary finance-ai-button" type="button" onClick={askCopilot} disabled={busy}><Calculator size={15} />Explicar com Copiloto</button> : null}
+        {recommendation && <div className="inline-success finance-recommendation"><b>Sugestão para revisão humana</b><p>{recommendation}</p></div>}
+        <p className="comparison-disclaimer">Estimativas por unidade; não representam lucro líquido e dependem dos custos e percentuais informados.</p>
+      </>}
+    </section>
+  </div>;
+}
+
+function FinanceConfigModal({ onClose }) {
+  const [config, setConfig] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  React.useEffect(() => { api.financeiro.config().then(setConfig).catch((reason) => setError(reason.message)).finally(() => setLoaded(true)); }, []);
+  async function submit(event) {
+    event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError('');
+    const pct = (name) => String(form.get(name)).trim() ? Number(String(form.get(name)).replace(',', '.')) : null;
+    try { setConfig(await api.financeiro.updateConfig({
+      imposto_variavel_percentual: pct('imposto_variavel_percentual'),
+      comissao_percentual: pct('comissao_percentual'),
+      margem_contribuicao_minima: pct('margem_contribuicao_minima'),
+      limite_desconto_comercial: pct('limite_desconto_comercial'),
+    })); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  }
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="finance-config-title">
+    <div className="modal-heading"><div><span className="eyebrow">ADMINISTRAÇÃO</span><h2 id="finance-config-title">Política financeira da loja</h2></div><button className="icon-button close-button" type="button" onClick={onClose} aria-label="Fechar">×</button></div>
+    {error && <div className="inline-error" role="alert">{error}</div>}
+    {!loaded ? <div className="page-loading"><span className="spinner" />Carregando configuração…</div> : <form className="client-form" onSubmit={submit}><div className="form-two-col"><label>Impostos variáveis (%)<input name="imposto_variavel_percentual" type="number" min="0" max="100" step="0.01" defaultValue={financialValue(config?.imposto_variavel_percentual)} required /></label><label>Comissão (%)<input name="comissao_percentual" type="number" min="0" max="100" step="0.01" defaultValue={financialValue(config?.comissao_percentual)} required /></label></div><div className="form-two-col"><label>Margem mínima padrão (%)<input name="margem_contribuicao_minima" type="number" min="0" max="99.99" step="0.01" defaultValue={financialValue(config?.margem_contribuicao_minima)} required /></label><label>Limite comercial padrão (%)<input name="limite_desconto_comercial" type="number" min="0" max="100" step="0.01" defaultValue={financialValue(config?.limite_desconto_comercial)} required /></label></div><small>Confirme alíquotas e comissões com o responsável comercial ou contador.</small><div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Fechar</button><button className="button button-primary" disabled={busy}>{busy ? 'Salvando…' : 'Salvar política'}</button></div></form>}
+  </section></div>;
+}
+
+export function ProductsPage({ account = { role: 'leitor' } }) {
   const { data, loading, error, refresh } = useApiData(api.produtos.list, []);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null);
@@ -60,6 +172,8 @@ export function ProductsPage() {
   const [comparisonPriceError, setComparisonPriceError] = useState('');
   const [comparisonPriceBusy, setComparisonPriceBusy] = useState(false);
   const [comparisonQuery, setComparisonQuery] = useState('');
+  const [financeProduct, setFinanceProduct] = useState(null);
+  const [financeConfigOpen, setFinanceConfigOpen] = useState(false);
   const rows = useMemo(() => (data || []).filter((item) => `${item.nome} ${item.marca} ${item.categoria}`.toLowerCase().includes(query.toLowerCase())), [data, query]);
 
   async function save(form) {
@@ -126,15 +240,17 @@ export function ProductsPage() {
   const comparisonBasePrice = parseCatalogPrice(comparisonPrice);
 
   return <div className="page-stack">
-    <div className="page-heading"><div><span className="eyebrow">OPERAÇÃO COMERCIAL</span><h1>Catálogo de produtos</h1><p>Preços, estoque e descontos usados pela equipe.</p></div><button className="button button-primary" onClick={() => { setEditing({ ...blank }); setActionError(''); }}><CirclePlus size={17} /> Novo produto</button></div>
+    <div className="page-heading"><div><span className="eyebrow">OPERAÇÃO COMERCIAL</span><h1>Catálogo de produtos</h1><p>Preços, estoque e descontos usados pela equipe.</p></div><div className="catalog-heading-actions">{account.role === 'admin' && <button className="button button-secondary" onClick={() => setFinanceConfigOpen(true)}><Settings2 size={16} /> Política financeira</button>}<button className="button button-primary" onClick={() => { setEditing({ ...blank }); setActionError(''); }}><CirclePlus size={17} /> Novo produto</button></div></div>
     <section className="surface table-surface"><div className="table-toolbar"><div><h2>Produtos cadastrados</h2><span>{loading ? 'Carregando…' : `${data?.length ?? 0} itens`}</span></div><label className="table-search"><Search size={16} /><span className="sr-only">Buscar produto</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar no catálogo" /></label></div>
       {notice && <div className="inline-success">{notice}</div>}{(error || actionError) && <div className="inline-error" role="alert">{error || actionError}</div>}
       {loading ? <div className="page-loading"><span className="spinner" />Carregando catálogo…</div> : rows.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Produto</th><th>Categoria</th><th>Preço</th><th>Preço com desconto</th><th>Estoque</th><th>Desconto máx.</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{rows.map((item) => <tr key={item.id}>
         <td><span className="client-name-cell"><span className="table-avatar"><Package size={15} /></span><span><b>{item.nome}</b><small>{item.marca}</small></span></span></td><td>{item.categoria}</td><td><b>{currency.format(item.preco)}</b></td><td><span className="discounted-price-cell"><b>{currency.format(discountedPrice(item.preco, item.desconto_maximo))}</b><small>com {item.desconto_maximo}% off</small></span></td><td><span className={`stock-label${item.estoque === 0 ? ' out-of-stock' : ''}`}>{item.estoque === 0 ? 'Sem estoque' : item.estoque}</span></td><td>{item.desconto_maximo}%</td>
-        <td><div className="row-actions"><button className="icon-button" type="button" aria-label={`Comparar preços de ${item.nome}`} title="Comparar preços no Mercado Livre" onClick={() => openComparison(item)}><Scale size={16} /></button><button className="icon-button" type="button" aria-label={`Editar ${item.nome}`} onClick={() => { setEditing(item); setActionError(''); }}><Pencil size={16} /></button><button className="icon-button destructive" type="button" aria-label={`Excluir ${item.nome}`} onClick={() => remove(item)}><Trash2 size={16} /></button></div></td>
+        <td><div className="row-actions">{['admin', 'vendas'].includes(account.role) && <button className="icon-button" type="button" aria-label={`Análise financeira de ${item.nome}`} title="Análise financeira e simulação" onClick={() => setFinanceProduct(item)}><Calculator size={16} /></button>}<button className="icon-button" type="button" aria-label={`Comparar preços de ${item.nome}`} title="Comparar preços no Mercado Livre" onClick={() => openComparison(item)}><Scale size={16} /></button><button className="icon-button" type="button" aria-label={`Editar ${item.nome}`} onClick={() => { setEditing(item); setActionError(''); }}><Pencil size={16} /></button><button className="icon-button destructive" type="button" aria-label={`Excluir ${item.nome}`} onClick={() => remove(item)}><Trash2 size={16} /></button></div></td>
       </tr>)}</tbody></table></div> : <div className="empty-block"><Package size={23} /><b>{query ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}</b><span>{query ? 'Tente uma busca diferente.' : 'O catálogo mostrará os dados registrados pela equipe.'}</span></div>}
     </section>
     {editing && <ProductForm product={editing.id ? editing : null} onClose={() => setEditing(null)} onSave={save} busy={busy} />}
+    {financeProduct && <FinanceModal product={financeProduct} account={account} onClose={() => setFinanceProduct(null)} />}
+    {financeConfigOpen && <FinanceConfigModal onClose={() => setFinanceConfigOpen(false)} />}
     {comparison && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setComparison(null)}><section className="modal-card price-comparison-modal" role="dialog" aria-modal="true" aria-labelledby="comparison-title">
       <div className="modal-heading"><div><span className="eyebrow">PESQUISA DE MERCADO</span><h2 id="comparison-title">Comparar preços</h2></div><button className="icon-button close-button" type="button" onClick={() => setComparison(null)} aria-label="Fechar">×</button></div>
       <form className="comparison-own-price" onSubmit={saveComparisonPrice}>
